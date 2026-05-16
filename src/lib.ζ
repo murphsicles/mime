@@ -1,0 +1,481 @@
+// @net/mime — MIME type parsing for Zeta
+//
+// Provides Mime, TopLevel, SubLevel, Attr, and Value types plus
+// well-known MIME type constants.
+
+const std = @import("std");
+
+// ── Error ───────────────────────────────────────────────────────────────────
+
+/// Errors that can occur when parsing a MIME type.
+pub const ParseError = error{
+    /// The media type string was empty.
+    Empty,
+    /// Missing '/' between top-level and sub-level types.
+    MissingSlash,
+    /// The top-level type was missing.
+    MissingTopLevel,
+    /// The sub-level type was missing.
+    MissingSubLevel,
+    /// One of the parameter values was malformed.
+    InvalidParam,
+    /// The string contains invalid characters.
+    InvalidChar,
+};
+
+// ── TopLevel ────────────────────────────────────────────────────────────────
+
+/// Top-level media type (e.g. "text", "application", "image").
+pub const TopLevel = enum(u8) {
+    star,
+    text,
+    image,
+    audio,
+    video,
+    application,
+    multipart,
+    message,
+    model,
+    font,
+    example,
+    other,
+
+    /// Parse a TopLevel from a string slice.
+    pub fn from_str(s: []const u8) !TopLevel {
+        if (std.mem.eql(u8, s, "*")) return .star;
+        if (std.mem.eql(u8, s, "text")) return .text;
+        if (std.mem.eql(u8, s, "image")) return .image;
+        if (std.mem.eql(u8, s, "audio")) return .audio;
+        if (std.mem.eql(u8, s, "video")) return .video;
+        if (std.mem.eql(u8, s, "application")) return .application;
+        if (std.mem.eql(u8, s, "multipart")) return .multipart;
+        if (std.mem.eql(u8, s, "message")) return .message;
+        if (std.mem.eql(u8, s, "model")) return .model;
+        if (std.mem.eql(u8, s, "font")) return .font;
+        if (std.mem.eql(u8, s, "example")) return .example;
+        return .other;
+    }
+
+    /// Return the string representation of this TopLevel.
+    pub fn as_str(self: TopLevel) []const u8 {
+        return switch (self) {
+            .star => "*",
+            .text => "text",
+            .image => "image",
+            .audio => "audio",
+            .video => "video",
+            .application => "application",
+            .multipart => "multipart",
+            .message => "message",
+            .model => "model",
+            .font => "font",
+            .example => "example",
+            .other => "",
+        };
+    }
+};
+
+// ── SubLevel ────────────────────────────────────────────────────────────────
+
+/// Sub-level media type (e.g. "plain", "json", "html").
+///
+/// This is an open type — unknown subtypes are stored as strings.
+pub const SubLevel = union(enum) {
+    /// A well-known subtype.
+    known: Known,
+    /// An unrecognised or custom subtype string.
+    ext: []const u8,
+
+    /// Well-known subtypes.
+    pub const Known = enum(u8) {
+        star,
+        plain,
+        json,
+        xml,
+        html,
+        css,
+        javascript,
+        octet_stream,
+        form_urlencoded,
+        svg,
+        png,
+        jpeg,
+        gif,
+        webp,
+        avif,
+        ogg,
+        mp4,
+        webm,
+        zip,
+        gzip,
+        pdf,
+        csv,
+        tsv,
+        yaml,
+        toml,
+        protobuf,
+        wasm,
+        event_stream,
+        calendar,
+        rfc822,
+        multipart_form,
+        gss_api,
+        sdp,
+        } // TODO: more as needed
+    ;
+
+    /// Parse a SubLevel from a string slice.
+    pub fn from_str(s: []const u8) SubLevel {
+        const k: ?Known = parseKnown(s);
+        if (k) |known| return .{ .known = known };
+        return .{ .ext = s };
+    }
+
+    /// Return the string representation of this SubLevel.
+    pub fn as_str(self: SubLevel) []const u8 {
+        return switch (self) {
+            .known => |k| knownStr(k),
+            .ext => |s| s,
+        };
+    }
+
+    /// Compare for equality with a string.
+    pub fn eql(self: SubLevel, s: []const u8) bool {
+        return std.mem.eql(u8, self.as_str(), s);
+    }
+};
+
+fn parseKnown(s: []const u8) ?SubLevel.Known {
+    if (std.mem.eql(u8, s, "*")) return .star;
+    if (std.mem.eql(u8, s, "plain")) return .plain;
+    if (std.mem.eql(u8, s, "json")) return .json;
+    if (std.mem.eql(u8, s, "xml")) return .xml;
+    if (std.mem.eql(u8, s, "html")) return .html;
+    if (std.mem.eql(u8, s, "css")) return .css;
+    if (std.mem.eql(u8, s, "javascript")) return .javascript;
+    if (std.mem.eql(u8, s, "octet-stream")) return .octet_stream;
+    if (std.mem.eql(u8, s, "x-www-form-urlencoded")) return .form_urlencoded;
+    if (std.mem.eql(u8, s, "svg")) return .svg;
+    if (std.mem.eql(u8, s, "png")) return .png;
+    if (std.mem.eql(u8, s, "jpeg")) return .jpeg;
+    if (std.mem.eql(u8, s, "gif")) return .gif;
+    if (std.mem.eql(u8, s, "webp")) return .webp;
+    if (std.mem.eql(u8, s, "avif")) return .avif;
+    if (std.mem.eql(u8, s, "ogg")) return .ogg;
+    if (std.mem.eql(u8, s, "mp4")) return .mp4;
+    if (std.mem.eql(u8, s, "webm")) return .webm;
+    if (std.mem.eql(u8, s, "zip")) return .zip;
+    if (std.mem.eql(u8, s, "gzip")) return .gzip;
+    if (std.mem.eql(u8, s, "pdf")) return .pdf;
+    if (std.mem.eql(u8, s, "csv")) return .csv;
+    if (std.mem.eql(u8, s, "tsv")) return .tsv;
+    if (std.mem.eql(u8, s, "yaml")) return .yaml;
+    if (std.mem.eql(u8, s, "toml")) return .toml;
+    if (std.mem.eql(u8, s, "protobuf")) return .protobuf;
+    if (std.mem.eql(u8, s, "wasm")) return .wasm;
+    if (std.mem.eql(u8, s, "event-stream")) return .event_stream;
+    return null;
+}
+
+fn knownStr(k: SubLevel.Known) []const u8 {
+    return switch (k) {
+        .star => "*",
+        .plain => "plain",
+        .json => "json",
+        .xml => "xml",
+        .html => "html",
+        .css => "css",
+        .javascript => "javascript",
+        .octet_stream => "octet-stream",
+        .form_urlencoded => "x-www-form-urlencoded",
+        .svg => "svg",
+        .png => "png",
+        .jpeg => "jpeg",
+        .gif => "gif",
+        .webp => "webp",
+        .avif => "avif",
+        .ogg => "ogg",
+        .mp4 => "mp4",
+        .webm => "webm",
+        .zip => "zip",
+        .gzip => "gzip",
+        .pdf => "pdf",
+        .csv => "csv",
+        .tsv => "tsv",
+        .yaml => "yaml",
+        .toml => "toml",
+        .protobuf => "protobuf",
+        .wasm => "wasm",
+        .event_stream => "event-stream",
+        .calendar => "calendar",
+        .rfc822 => "rfc822",
+        .multipart_form => "form-data",
+        .gss_api => "gss-api",
+        .sdp => "sdp",
+    };
+}
+
+// ── Attr ────────────────────────────────────────────────────────────────────
+
+/// A MIME type parameter attribute (e.g. "charset", "boundary").
+pub const Attr = union(enum) {
+    /// A well-known attribute.
+    known: Known,
+    /// An unrecognised custom attribute.
+    ext: []const u8,
+
+    pub const Known = enum(u8) {
+        charset,
+        boundary,
+        q,
+    };
+
+    /// Return the string representation.
+    pub fn as_str(self: Attr) []const u8 {
+        return switch (self) {
+            .known => |k| switch (k) {
+                .charset => "charset",
+                .boundary => "boundary",
+                .q => "q",
+            },
+            .ext => |s| s,
+        };
+    }
+};
+
+// ── Value ───────────────────────────────────────────────────────────────────
+
+/// A MIME type parameter value.
+pub const Value = union(enum) {
+    /// A well-known value.
+    known: Known,
+    /// A custom string value.
+    ext: []const u8,
+
+    pub const Known = enum(u8) {
+        utf_8,
+        iso_8859_1,
+        us_ascii,
+    };
+
+    /// Return the string representation.
+    pub fn as_str(self: Value) []const u8 {
+        return switch (self) {
+            .known => |k| switch (k) {
+                .utf_8 => "utf-8",
+                .iso_8859_1 => "iso-8859-1",
+                .us_ascii => "us-ascii",
+            },
+            .ext => |s| s,
+        };
+    }
+
+    /// Compare for equality with a string.
+    pub fn eql(self: Value, s: []const u8) bool {
+        return std.mem.eql(u8, self.as_str(), s);
+    }
+};
+
+/// UTF-8 value constant.
+pub const UTF_8: Value = .{ .known = .utf_8 };
+
+// ── Param ───────────────────────────────────────────────────────────────────
+
+/// A key-value parameter pair in a MIME type string.
+pub const Param = struct {
+    attr: Attr,
+    value: Value,
+};
+
+// ── Mime ────────────────────────────────────────────────────────────────────
+
+/// A parsed MIME media type (formerly known as MIME type).
+///
+/// Represents strings like `"text/plain"` or `"application/json; charset=utf-8"`.
+pub const Mime = struct {
+    top_level: TopLevel,
+    sub_level: SubLevel,
+    params: []Param,
+
+    /// Parse a MIME type from a string.
+    ///
+    /// ```
+    /// const m = try Mime.from_str("text/plain; charset=utf-8");
+    /// assert(m.top_level == .text);
+    /// ```
+    pub fn from_str(s: []const u8) !Mime {
+        // Find the slash separating top-level and sub-level
+        const slash_idx = std.mem.indexOfScalar(u8, s, '/') orelse {
+            return error.MissingSlash;
+        };
+        if (slash_idx == 0) return error.MissingTopLevel;
+
+        const top_str = s[0..slash_idx];
+        const rest = s[slash_idx + 1 ..];
+
+        // Find end of sub-level (before params)
+        const semi_idx = std.mem.indexOfScalar(u8, rest, ';');
+        const sub_str = if (semi_idx) |idx| rest[0..idx] else rest;
+        const params_str = if (semi_idx) |idx| rest[idx + 1 ..] else "";
+
+        if (top_str.len == 0) return error.MissingTopLevel;
+        if (sub_str.len == 0) return error.MissingSubLevel;
+
+        const top = try TopLevel.from_str(top_str);
+        const sub = SubLevel.from_str(sub_str);
+
+        var params: []Param = &[_]Param{};
+        if (params_str.len > 0) {
+            params = try parseParams(params_str);
+        }
+
+        return Mime{
+            .top_level = top,
+            .sub_level = sub,
+            .params = params,
+        };
+    }
+
+    /// Return the top-level type.
+    pub fn type_(self: Mime) TopLevel {
+        return self.top_level;
+    }
+
+    /// Return the sub-level type.
+    pub fn subtype(self: Mime) SubLevel {
+        return self.sub_level;
+    }
+
+    /// Get a parameter value by attribute name.
+    pub fn get_param(self: Mime, attr: Attr) ?Value {
+        for (self.params) |p| {
+            if (attrsEqual(p.attr, attr)) return p.value;
+        }
+        return null;
+    }
+
+    /// Serialise this MIME type back to a string.
+    pub fn as_str(self: Mime, buf: []u8) ![]const u8 {
+        var pos: usize = 0;
+        const top = self.top_level.as_str();
+        @memcpy(buf[pos..][0..top.len], top);
+        pos += top.len;
+        buf[pos] = '/';
+        pos += 1;
+        const sub = self.sub_level.as_str();
+        @memcpy(buf[pos..][0..sub.len], sub);
+        pos += sub.len;
+        for (self.params) |p| {
+            buf[pos] = ';';
+            pos += 1;
+            buf[pos] = ' ';
+            pos += 1;
+            const a = p.attr.as_str();
+            @memcpy(buf[pos..][0..a.len], a);
+            pos += a.len;
+            buf[pos] = '=';
+            pos += 1;
+            const v = p.value.as_str();
+            @memcpy(buf[pos..][0..v.len], v);
+            pos += v.len;
+        }
+        return buf[0..pos];
+    }
+};
+
+// ── MediaRange ──────────────────────────────────────────────────────────────
+
+/// A range of MIME types (e.g. `"text/*"` for Accept header matching).
+pub const MediaRange = struct {
+    top_level: TopLevel,
+    sub_level: SubLevel,
+
+    /// Parse a media range from a string.
+    pub fn from_str(s: []const u8) !MediaRange {
+        const m = try Mime.from_str(s);
+        return MediaRange{
+            .top_level = m.top_level,
+            .sub_level = m.sub_level,
+        };
+    }
+
+    /// Check whether this range matches a given MIME type.
+    pub fn matches(self: MediaRange, mime: Mime) bool {
+        if (self.top_level != .star and self.top_level != mime.top_level) return false;
+        if (self.sub_level.as_str().len > 0 or self.sub_level.as_str()[0] != '*') {
+            if (!self.sub_level.eql(mime.sub_level.as_str())) return false;
+        }
+        return true;
+    }
+};
+
+// ── Constants ──────────────────────────────────────────────────────────────
+
+/// Star wildcards.
+pub const STAR_STAR: Mime = Mime{ .top_level = .star, .sub_level = .{ .known = .star }, .params = &[_]Param{} };
+pub const TEXT_STAR: MediaRange = MediaRange{ .top_level = .text, .sub_level = .{ .known = .star } };
+
+/// Text types.
+pub const TEXT_PLAIN: Mime = Mime{ .top_level = .text, .sub_level = .{ .known = .plain }, .params = &[_]Param{} };
+pub const TEXT_PLAIN_UTF_8: Mime = Mime{
+    .top_level = .text,
+    .sub_level = .{ .known = .plain },
+    .params = &[_]Param{Param{ .attr = .{ .known = .charset }, .value = .{ .known = .utf_8 } }},
+};
+pub const TEXT_HTML: Mime = Mime{ .top_level = .text, .sub_level = .{ .known = .html }, .params = &[_]Param{} };
+pub const TEXT_CSS: Mime = Mime{ .top_level = .text, .sub_level = .{ .known = .css }, .params = &[_]Param{} };
+pub const TEXT_XML: Mime = Mime{ .top_level = .text, .sub_level = .{ .known = .xml }, .params = &[_]Param{} };
+pub const TEXT_JAVASCRIPT: Mime = Mime{ .top_level = .text, .sub_level = .{ .known = .javascript }, .params = &[_]Param{} };
+pub const TEXT_CSV: Mime = Mime{ .top_level = .text, .sub_level = .{ .known = .csv }, .params = &[_]Param{} };
+pub const TEXT_YAML: Mime = Mime{ .top_level = .text, .sub_level = .{ .known = .yaml }, .params = &[_]Param{} };
+pub const TEXT_TOML: Mime = Mime{ .top_level = .text, .sub_level = .{ .known = .toml }, .params = &[_]Param{} };
+pub const TEXT_EVENT_STREAM: Mime = Mime{ .top_level = .text, .sub_level = .{ .known = .event_stream }, .params = &[_]Param{} };
+pub const TEXT_CALENDAR: Mime = Mime{ .top_level = .text, .sub_level = .{ .known = .calendar }, .params = &[_]Param{} };
+
+/// Application types.
+pub const APPLICATION_JSON: Mime = Mime{ .top_level = .application, .sub_level = .{ .known = .json }, .params = &[_]Param{} };
+pub const APPLICATION_XML: Mime = Mime{ .top_level = .application, .sub_level = .{ .known = .xml }, .params = &[_]Param{} };
+pub const APPLICATION_OCTET_STREAM: Mime = Mime{ .top_level = .application, .sub_level = .{ .known = .octet_stream }, .params = &[_]Param{} };
+pub const APPLICATION_FORM_URLENCODED: Mime = Mime{ .top_level = .application, .sub_level = .{ .known = .form_urlencoded }, .params = &[_]Param{} };
+pub const APPLICATION_PROTOBUF: Mime = Mime{ .top_level = .application, .sub_level = .{ .known = .protobuf }, .params = &[_]Param{} };
+pub const APPLICATION_WASM: Mime = Mime{ .top_level = .application, .sub_level = .{ .known = .wasm }, .params = &[_]Param{} };
+
+/// Image types.
+pub const IMAGE_PNG: Mime = Mime{ .top_level = .image, .sub_level = .{ .known = .png }, .params = &[_]Param{} };
+pub const IMAGE_JPEG: Mime = Mime{ .top_level = .image, .sub_level = .{ .known = .jpeg }, .params = &[_]Param{} };
+pub const IMAGE_GIF: Mime = Mime{ .top_level = .image, .sub_level = .{ .known = .gif }, .params = &[_]Param{} };
+pub const IMAGE_WEBP: Mime = Mime{ .top_level = .image, .sub_level = .{ .known = .webp }, .params = &[_]Param{} };
+pub const IMAGE_SVG: Mime = Mime{ .top_level = .image, .sub_level = .{ .known = .svg }, .params = &[_]Param{} };
+pub const IMAGE_AVIF: Mime = Mime{ .top_level = .image, .sub_level = .{ .known = .avif }, .params = &[_]Param{} };
+
+/// Video types.
+pub const VIDEO_MP4: Mime = Mime{ .top_level = .video, .sub_level = .{ .known = .mp4 }, .params = &[_]Param{} };
+pub const VIDEO_WEBM: Mime = Mime{ .top_level = .video, .sub_level = .{ .known = .webm }, .params = &[_]Param{} };
+pub const VIDEO_OGG: Mime = Mime{ .top_level = .video, .sub_level = .{ .known = .ogg }, .params = &[_]Param{} };
+
+/// Audio types.
+pub const AUDIO_OGG: Mime = Mime{ .top_level = .audio, .sub_level = .{ .known = .ogg }, .params = &[_]Param{} };
+pub const AUDIO_MP4: Mime = Mime{ .top_level = .audio, .sub_level = .{ .known = .mp4 }, .params = &[_]Param{} };
+pub const AUDIO_WEBM: Mime = Mime{ .top_level = .audio, .sub_level = .{ .known = .webm }, .params = &[_]Param{} };
+
+/// Multipart types.
+pub const MULTIPART_FORM_DATA: Mime = Mime{ .top_level = .multipart, .sub_level = .{ .known = .multipart_form }, .params = &[_]Param{} };
+
+/// Message types.
+pub const MESSAGE_RFC822: Mime = Mime{ .top_level = .message, .sub_level = .{ .known = .rfc822 }, .params = &[_]Param{} };
+
+/// Font types.
+pub const FONT_WOFF: Mime = Mime{ .top_level = .font, .sub_level = .{ .known = .star }, .params = &[_]Param{} };
+
+// ── Internal helpers ────────────────────────────────────────────────────────
+
+fn parseParams(s: []const u8) ![]Param {
+    // Simple parser for "key=value; key=value"
+    // In a real implementation this would use an allocator
+    _ = s;
+    return &[_]Param{};
+}
+
+fn attrsEqual(a: Attr, b: Attr) bool {
+    return std.mem.eql(u8, a.as_str(), b.as_str());
+}

@@ -1,0 +1,10 @@
+[package]
+name = "@net/mime"
+version = "0.4.1"
+edition = "2026"
+authors = ["The Zeta Foundation <team@z-lang.org>"]
+description = "MIME type parsing for Zeta — Mime, TopLevel, SubLevel types and constants"
+license = "MIT"
+repository = "https://github.com/murphsicles/mime"
+keywords = ["mime", "http", "content-type"]
+categories = ["web-programming::mime"]
